@@ -182,9 +182,9 @@ q2 = train_raw["pseudo_load_score"].quantile(0.66)
 def score_to_label(score):
     return np.select([score <= q1, score <= q2], [0, 1], default=2).astype(np.int32)
 
-train_df["pseudo_label"] = score_to_label(train_raw["pseudo_load_score"]).values
-val_df["pseudo_label"] = score_to_label(val_raw["pseudo_load_score"]).values
-test_df["pseudo_label"] = score_to_label(test_raw["pseudo_load_score"]).values
+train_df["pseudo_label"] = score_to_label(train_raw["pseudo_load_score"])
+val_df["pseudo_label"] = score_to_label(val_raw["pseudo_load_score"])
+test_df["pseudo_label"] = score_to_label(test_raw["pseudo_load_score"])
 
 for name, d in [("Train", train_df), ("Val", val_df), ("Test", test_df)]:
     counts = d["pseudo_label"].value_counts().sort_index()

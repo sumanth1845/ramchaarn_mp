@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>AI Writing Assistant</title>
+
+<style>
+body { font-family:"Segoe UI"; background:#f3f4f6; margin:0; }
+.container { display:flex; height:100vh; }
+
+.editor-panel { flex:2; padding:20px; display:flex; flex-direction:column; }
+
+textarea {
+  flex:1; padding:16px;
+  border-radius:12px; border:1px solid #ccc;
+  font-size:15px; resize:none;
+}
+
+.hint-panel {
+  flex:1; background:#fff;
+  padding:20px; border-left:1px solid #e5e7eb;
+  overflow-y:auto;
+}
+
+.controls { display:flex; gap:10px; margin-bottom:10px; }
+
+input {
+  padding:8px; border-radius:6px;
+  border:1px solid #ccc; width:60%;
+  font-size:14px;
+}
+
+button {
+  padding:8px 12px;
+  border:none; border-radius:6px;
+  background:#2563eb; color:#fff;
+  cursor:pointer; font-size:14px;
+}
+
+button:hover { opacity:0.9; }
+
+.stop { background:#dc2626; }
+
+.card {
+  background:#f9fafb;
+  padding:12px;
+  border-radius:10px;
+  margin-bottom:10px;
+}
+
+.problem {
+  background:#fff7ed;
+  padding:8px;
+  border-radius:6px;
+  margin-top:6px;
+}
+
+.silent { color:#6b7280; }
+
+.load-indicator {
+  display:inline-block;
+  padding:3px 10px;
+  border-radius:12px;
+  font-size:12px;
+  font-weight:bold;
+  margin-left:8px;
+}
+.load-0 { background:#d1fae5; color:#065f46; }
+.load-1 { background:#fef3c7; color:#92400e; }
+.load-2 { background:#fee2e2; color:#991b1b; }
+
+#status { margin-bottom:10px; font-size:14px; }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="editor-panel">
+
+<div class="controls">
+  <input id="question" placeholder="Enter question/topic">
+  <button onclick="start()">Start</button>
+  <button class="stop" onclick="stop()">Stop</button>
+</div>
+
+<div id="status">
+  State: <span id="state">OFF</span>
+  <span id="loadBadge"></span>
+</div>
+
+<textarea id="text" placeholder="Start typing here after clicking Start..."></textarea>
+
+</div>
+
+<div class="hint-panel" id="hintBox">
+  <div class="silent">No hints yet. Start typing to get feedback.</div>
+</div>
+
+</div>
+
+<script>
+// FIX: use relative URL so it works when served by Flask on any port
+const API = "/keystrokes";
+
+let events = [];
+let timer = null;
+let active = false;
+let startTime = 0;
+
+let session_id = "sess_" + Date.now();
+let lastTypingTime = Date.now();
+
+const text = document.getElementById("text");
+const hintBox = document.getElementById("hintBox");
+const loadBadge = document.getElementById("loadBadge");
+
+function start(){
+  const q = document.getElementById("question").value;
+  if(!q){ alert("Enter question"); return; }
+
+  active = true;
+  startTime = performance.now();
+  events = [];
+  lastTypingTime = Date.now();
+  session_id = "sess_" + Date.now();
+
+  document.getElementById("state").textContent = "ON";
+  text.focus();
+  timer = setInterval(send, 3000);
+}
+
+function stop(){
+  active = false;
+  clearInterval(timer);
+  document.getElementById("state").textContent = "OFF";
+  loadBadge.innerHTML = "";
+}
+
+text.addEventListener("keydown", e => {
+  if(!active) return;
+  lastTypingTime = Date.now();
+  events.push({key: e.key, type: "down", time: performance.now() - startTime});
+});
+
+text.addEventListener("keyup", e => {
+  if(!active) return;
+  lastTypingTime = Date.now();
+  events.push({key: e.key, type: "up", time: performance.now() - startTime});
+});
+
+function send(){
+  if(!active) return;
+
+  const idleTime = (Date.now() - lastTypingTime) / 1000;
+
+  fetch(API, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      session_id: session_id,
+      question: document.getElementById("question").value,
+      text: text.value,
+      events: events,
+      is_idle: idleTime > 10
+    })
+  })
+  .then(r => r.json())
+  .then(d => {
+    events = [];
+
+    // Show cognitive load level
+    if(d.cognitive_load !== undefined){
+      const labels = ["Low", "Medium", "High"];
+      loadBadge.innerHTML = `<span class="load-indicator load-${d.cognitive_load}">${labels[d.cognitive_load]} Load</span>`;
+    }
+
+    if(d.action === "hint"){
+      hintBox.innerHTML = `
+        <div class="card">
+          <b>Problem</b>
+          <div class="problem">${d.problem_area || "General difficulty detected"}</div>
+        </div>
+
+        <div class="card">
+          <b>Hint</b>
+          <div>${d.hint}</div>
+        </div>
+
+        <div class="card">
+          <b>Reference</b>
+          <div>${d.reference}</div>
+        </div>
+      `;
+    }
+  })
+  .catch(err => {
+    console.error("API error:", err);
+  });
+}
+</script>
+
+</body>
+</html>
